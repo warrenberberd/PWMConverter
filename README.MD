@@ -1,4 +1,4 @@
-#PWMConverter
+# PWMConverter
 
 This project is for convert PWM Signal from an RC Remote controll receiver (Ex : FRSKY X8R)
 wich is coded in PWM with a duty cycle of 10% (1->2ms value range over  18ms), to PWM signal
