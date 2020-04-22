@@ -43,6 +43,7 @@
 #define CHAN_2  0
 #define CHAN_3  4
 #define CHAN_4  5
+
 #define OUT_1  15
 #define OUT_2  13
 #define OUT_3  12
@@ -75,54 +76,17 @@ unsigned long PWM_OUTPUT_FREQ=1000; // To change PWM Frequency (default: 1kHz)
 // Working variable
 unsigned long PWM_RANGE;
 
-unsigned long RANGE_DURATION1;
-unsigned long RANGE_DURATION2;
-unsigned long RANGE_DURATION3;
-unsigned long RANGE_DURATION4;
+unsigned long RANGE_DURATION1=0;
+unsigned long RANGE_DURATION2=0;
+unsigned long RANGE_DURATION3=0;
+unsigned long RANGE_DURATION4=0;
 
-void setup() {
-  Serial.setDebugOutput(false);
+bool GO_FORWARD=false;
+bool GO_BACKWARD=false;
+bool GO_LEFT=false;
+bool GO_RIGHT=false;
 
-  #ifdef DEBUG
-    Serial.begin(115200);
-    while (!Serial) ; // wait for Arduino Serial Monitor to open
 
-    Serial.println("");
-    delay(1000);
-
-    
-    Serial.setDebugOutput(true);
-  #endif
-
-  pinMode(CHAN_1, INPUT);
-  pinMode(CHAN_2, INPUT);
-  pinMode(CHAN_3, INPUT);
-  pinMode(CHAN_4, INPUT);
-
-  pinMode(OUT_1, OUTPUT);
-  pinMode(OUT_2, OUTPUT);
-  pinMode(OUT_3, OUTPUT);
-  pinMode(OUT_4, OUTPUT);
-
-  
-
-  // By default, we presume that the MIN value for each channel is PWM_MIN_DURATION
-  REAL_PWM_MIN_VALUE1=PWM_MIN_DURATION;
-  REAL_PWM_MIN_VALUE2=PWM_MIN_DURATION;
-  REAL_PWM_MIN_VALUE3=PWM_MIN_DURATION;
-  REAL_PWM_MIN_VALUE4=PWM_MIN_DURATION;
-  // Same thing for MAX
-  REAL_PWM_MAX_VALUE1=PWM_MAX_DURATION;
-  REAL_PWM_MAX_VALUE2=PWM_MAX_DURATION;
-  REAL_PWM_MAX_VALUE3=PWM_MAX_DURATION;
-  REAL_PWM_MAX_VALUE4=PWM_MAX_DURATION;
-
-  // Calculation PWM Default Range
-  PWM_RANGE=PWM_MAX_DURATION-PWM_MIN_DURATION;
-  analogWriteRange(PWM_RANGE);         // Setting range from 0 to 1000
-
-  analogWriteFreq(PWM_OUTPUT_FREQ); // To change PWM Frequency (default: 1kHz)
-}
 
 // To auto-calibrate the values
 void autoTrimValues(){
@@ -194,38 +158,16 @@ void output(){
   #endif
 }
 
-// Translating value for a Dual Wheel CAR Output
-void shiftToDualWheelMode(){
-  // Input Mapping : 
-  // CHAN_1=SPEED
-  // CHAN_2=LEFT/RIGHT        (centered by default)
-  // CHAN_3=FORWARD/BACKWARD  (centered by default)
-  // CHAN_4=NOT USE
-  unsigned long TILT_VALUE=RANGE_DURATION3;
-  unsigned long TILT_VALUE_RAW=DURATION_3;
-  unsigned long PAN_VALUE=RANGE_DURATION2;
-  unsigned long PAN_VALUE_RAW=DURATION_2;
-  unsigned long SPEED_VALUE=RANGE_DURATION1;
-  unsigned long SPEED_VALUE_RAW=DURATION_1;
-
-
-  unsigned long MIDDLE_PAN=(REAL_PWM_MAX_VALUE2-REAL_PWM_MIN_VALUE2)/2;//+REAL_PWM_MIN_VALUE2;
-  unsigned long MIDDLE_TILT=(REAL_PWM_MAX_VALUE3-REAL_PWM_MIN_VALUE3)/2;//+REAL_PWM_MIN_VALUE3;
-
-  unsigned long PAN_TRIGGER=20;
-  unsigned long TILT_TRIGGER=20;
-
+// To process the TILT stick
+unsigned long  shiftForwardValue(unsigned long SPEED_VALUE,unsigned long TILT_VALUE){
   // The ADVANCE value take the value of SPEED
   unsigned long ADVANCE_VALUE=SPEED_VALUE;
 
-  // To say ALL wheel stop
-  RANGE_DURATION1=0;
-  RANGE_DURATION3=0;
-  RANGE_DURATION2=0;
-  RANGE_DURATION4=0;
+  unsigned long TILT_TRIGGER=20;
+  unsigned long MIDDLE_TILT=(REAL_PWM_MAX_VALUE3-REAL_PWM_MIN_VALUE3)/2;//+REAL_PWM_MIN_VALUE3;
 
-  bool GO_FORWARD=false;
-  bool GO_BACKWARD=false;
+  GO_FORWARD=false;
+  GO_BACKWARD=false;
   unsigned long REL_TILT_VALUE=0;
   unsigned long REL_TILT_MAX=(REAL_PWM_MAX_VALUE3-REAL_PWM_MIN_VALUE3)/2;
   if(TILT_VALUE>MIDDLE_TILT+TILT_TRIGGER){
@@ -236,7 +178,7 @@ void shiftToDualWheelMode(){
 
     REL_TILT_VALUE=TILT_VALUE-MIDDLE_TILT;  // Get the Tilt Value referenced to Middle
 
-    Serial.printf("REL_TILT_VALUE=%lu\t\tREL_TILT_MAX=%lu\n",REL_TILT_VALUE,REL_TILT_MAX);
+    //Serial.printf("REL_TILT_VALUE=%lu\t\tREL_TILT_MAX=%lu\n",REL_TILT_VALUE,REL_TILT_MAX);
 
     // then we scale with TILT value
     ADVANCE_VALUE=ADVANCE_VALUE*REL_TILT_VALUE/REL_TILT_MAX;
@@ -252,15 +194,131 @@ void shiftToDualWheelMode(){
 
     REL_TILT_VALUE=MIDDLE_TILT-TILT_VALUE;  // Get the Tilt Value referenced to Middle
 
-    Serial.printf("REL_TILT_VALUE=%lu\t\tREL_TILT_MAX=%lu\n",REL_TILT_VALUE,REL_TILT_MAX);
+    //Serial.printf("REL_TILT_VALUE=%lu\t\tREL_TILT_MAX=%lu\n",REL_TILT_VALUE,REL_TILT_MAX);
 
     // then we scale with TILT value
     ADVANCE_VALUE=ADVANCE_VALUE*REL_TILT_VALUE/REL_TILT_MAX;
 
     // We set the SPEED value
     RANGE_DURATION2=RANGE_DURATION4=ADVANCE_VALUE;
-    
+  }else{
+    ADVANCE_VALUE=0;
   }
+
+  return ADVANCE_VALUE;
+}
+
+// To process the PAN stick
+unsigned long shiftRotationValue(unsigned long SPEED_VALUE,unsigned long PAN_VALUE){
+  unsigned long ROTATION_VALUE=SPEED_VALUE;
+
+  unsigned long PAN_TRIGGER=20;
+  unsigned long MIDDLE_PAN=(REAL_PWM_MAX_VALUE2-REAL_PWM_MIN_VALUE2)/2;//+REAL_PWM_MIN_VALUE2;
+
+  GO_LEFT=false;
+  GO_RIGHT=false;
+  unsigned long REL_PAN_VALUE=0;
+  unsigned long REL_PAN_MAX=(REAL_PWM_MAX_VALUE2-REAL_PWM_MIN_VALUE2)/2;
+
+  if(PAN_VALUE>MIDDLE_PAN+PAN_TRIGGER){
+    #ifdef DEBUG
+      //Serial.print(" GO RIGHT !");
+    #endif
+    GO_RIGHT=true;
+
+    REL_PAN_VALUE=PAN_VALUE-MIDDLE_PAN;  // Get the PAN Value referenced to Middle
+
+    #ifdef DEBUG
+      //Serial.printf("REL_PAN_VALUE=%lu\t\REL_PAN_MAX=%lu\n",REL_PAN_VALUE,REL_PAN_MAX);
+    #endif
+
+    // then we scale with PAN value
+    ROTATION_VALUE=ROTATION_VALUE*REL_PAN_VALUE/REL_PAN_MAX;
+
+    unsigned long OLD_VALUE=0;
+    unsigned long REL_REST=0;
+    if(RANGE_DURATION1>0){        // if we going CW on Wheel1
+      OLD_VALUE=RANGE_DURATION1;
+      if(RANGE_DURATION1>ROTATION_VALUE){
+        RANGE_DURATION1-=ROTATION_VALUE;
+      }else{
+        RANGE_DURATION1=0;
+      }
+      REL_REST=RANGE_DURATION1-OLD_VALUE;
+      if(REL_REST<ROTATION_VALUE){
+        RANGE_DURATION2+=REL_REST;
+        if(RANGE_DURATION2>PWM_RANGE) RANGE_DURATION2=PWM_RANGE;
+      }
+    }else if(RANGE_DURATION2>0){  // if we going CCW on Wheel1
+      OLD_VALUE=RANGE_DURATION2;
+      if(RANGE_DURATION2>ROTATION_VALUE){
+        RANGE_DURATION2-=ROTATION_VALUE;
+      }else{
+        RANGE_DURATION2=0;
+      }
+      REL_REST=RANGE_DURATION2-OLD_VALUE;
+      if(REL_REST<ROTATION_VALUE){
+        RANGE_DURATION1+=REL_REST;
+        if(RANGE_DURATION1>PWM_RANGE) RANGE_DURATION1=PWM_RANGE;
+      }
+    }else{  // If Wheel1 dont move
+      RANGE_DURATION2+=ROTATION_VALUE;
+      RANGE_DURATION3+=ROTATION_VALUE;
+    }
+
+  }else if(PAN_VALUE<MIDDLE_PAN-PAN_TRIGGER){
+    #ifdef DEBUG
+      //Serial.print(" GO LEFT ! ");
+    #endif
+    GO_LEFT=true;
+
+    REL_PAN_VALUE=MIDDLE_PAN-PAN_VALUE;  // Get the PAN Value referenced to Middle
+
+    #ifdef DEBUG
+      //Serial.printf("REL_PAN_VALUE=%lu\t\REL_PAN_MAX=%lu\n",REL_PAN_VALUE,REL_PAN_MAX);
+    #endif
+
+    // then we scale with PAN value
+    ROTATION_VALUE=ROTATION_VALUE*REL_PAN_VALUE/REL_PAN_MAX;
+
+    unsigned long OLD_VALUE=0;
+    unsigned long REL_REST=0;
+    if(RANGE_DURATION3>0){        // if we going CW on Wheel1
+      OLD_VALUE=RANGE_DURATION1;
+      if(RANGE_DURATION3>ROTATION_VALUE){
+        RANGE_DURATION3-=ROTATION_VALUE;
+      }else{
+        RANGE_DURATION3=0;
+      }
+      REL_REST=RANGE_DURATION3-OLD_VALUE;
+      if(REL_REST<ROTATION_VALUE){
+        RANGE_DURATION4+=REL_REST;
+        if(RANGE_DURATION4>PWM_RANGE) RANGE_DURATION4=PWM_RANGE;
+      }
+    }else if(RANGE_DURATION4>0){  // if we going CCW on Wheel1
+      OLD_VALUE=RANGE_DURATION4;
+      if(RANGE_DURATION4>ROTATION_VALUE){
+        RANGE_DURATION4-=ROTATION_VALUE;
+      }else{
+        RANGE_DURATION4=0;
+      }
+      REL_REST=RANGE_DURATION4-OLD_VALUE;
+      if(REL_REST<ROTATION_VALUE){
+        RANGE_DURATION3+=REL_REST;
+        if(RANGE_DURATION3>PWM_RANGE) RANGE_DURATION3=PWM_RANGE;
+      }
+    }else{  // If Wheel1 dont move
+      RANGE_DURATION4+=ROTATION_VALUE;
+      RANGE_DURATION1+=ROTATION_VALUE;
+    }
+
+  }else{
+    ROTATION_VALUE=0;
+  }
+
+  #ifdef DEBUG
+    //Serial.printf("ROTATION_VALUE=%lu\t",ROTATION_VALUE);
+  #endif
 
   // Output Mapping : 
   // OUT_1=WHEEL1_CW
@@ -268,6 +326,89 @@ void shiftToDualWheelMode(){
   // OUT_3=WHEEL2_CW
   // OUT_4=WHEEL2_CCW
 
+  return ROTATION_VALUE;
+}
+
+// Translating value for a Dual Wheel CAR Output
+void shiftToDualWheelMode(){
+  // Input Mapping : 
+  // CHAN_1=SPEED
+  // CHAN_2=LEFT/RIGHT        (centered by default)
+  // CHAN_3=FORWARD/BACKWARD  (centered by default)
+  // CHAN_4=NOT USE
+  unsigned long TILT_VALUE=RANGE_DURATION3;
+  //unsigned long TILT_VALUE_RAW=DURATION_3;
+  unsigned long PAN_VALUE=RANGE_DURATION2;
+  //unsigned long PAN_VALUE_RAW=DURATION_2;
+  unsigned long SPEED_VALUE=RANGE_DURATION1;
+  //unsigned long SPEED_VALUE_RAW=DURATION_1;
+
+  // To say ALL wheel stop
+  RANGE_DURATION1=0;
+  RANGE_DURATION3=0;
+  RANGE_DURATION2=0;
+  RANGE_DURATION4=0;
+
+  unsigned long ADVANCE_VALUE=shiftForwardValue(SPEED_VALUE,TILT_VALUE);
+
+  unsigned long ROTATION_VALUE=shiftRotationValue(SPEED_VALUE,PAN_VALUE);
+
+
+  // Output Mapping : 
+  // OUT_1=WHEEL1_CW
+  // OUT_2=WHEEL1_CCW
+  // OUT_3=WHEEL2_CW
+  // OUT_4=WHEEL2_CCW
+
+}
+
+// Main Setup
+void setup() {
+  
+
+  #ifdef DEBUG
+    Serial.begin(115200);
+    while (!Serial) ; // wait for Arduino Serial Monitor to open
+
+    Serial.setDebugOutput(false);
+
+    Serial.println("");
+    delay(1000);
+
+    
+    Serial.setDebugOutput(true);
+  #endif
+
+  pinMode(CHAN_1, INPUT);
+  pinMode(CHAN_2, INPUT);
+  pinMode(CHAN_3, INPUT);
+  pinMode(CHAN_4, INPUT);
+
+  pinMode(OUT_1, OUTPUT);
+  pinMode(OUT_2, OUTPUT);
+  pinMode(OUT_3, OUTPUT);
+  pinMode(OUT_4, OUTPUT);
+
+  // Force early output zero
+  output();
+  
+
+  // By default, we presume that the MIN value for each channel is PWM_MIN_DURATION
+  REAL_PWM_MIN_VALUE1=PWM_MIN_DURATION;
+  REAL_PWM_MIN_VALUE2=PWM_MIN_DURATION;
+  REAL_PWM_MIN_VALUE3=PWM_MIN_DURATION;
+  REAL_PWM_MIN_VALUE4=PWM_MIN_DURATION;
+  // Same thing for MAX
+  REAL_PWM_MAX_VALUE1=PWM_MAX_DURATION;
+  REAL_PWM_MAX_VALUE2=PWM_MAX_DURATION;
+  REAL_PWM_MAX_VALUE3=PWM_MAX_DURATION;
+  REAL_PWM_MAX_VALUE4=PWM_MAX_DURATION;
+
+  // Calculation PWM Default Range
+  PWM_RANGE=PWM_MAX_DURATION-PWM_MIN_DURATION;
+  analogWriteRange(PWM_RANGE);         // Setting range from 0 to 1000
+
+  analogWriteFreq(PWM_OUTPUT_FREQ); // To change PWM Frequency (default: 1kHz)
 }
 
 // Main loop
