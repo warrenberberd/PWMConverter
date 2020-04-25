@@ -8,3 +8,6 @@ The main usage is for replacing RF receiver, from a basic RC CAR, with a FRSKY m
 to control the car with a TARANIS remote control.
 
 With a ESP8266, gave me a 4 channels converter (4 in/4 out)
+
+The converter also include a "shiftToDualWheelMode()" function, to interpret the INPUT value as Trimmer of RC controller
+and Adapt Output Value to drive a Dual Full H Bridge with Rotate L/R for each motor, in PWM.
